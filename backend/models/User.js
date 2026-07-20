@@ -44,11 +44,10 @@ const userSchema = new mongoose.Schema(
   },
 );
 
-userSchema.pre("save", async function (next) {
+userSchema.pre("save", async function () {
   const passwordWasChanged = this.isModified("password");
 
   if (passwordWasChanged === false) {
-    next();
     return;
   }
 
@@ -59,8 +58,6 @@ userSchema.pre("save", async function (next) {
   const hashedPassword = await bcrypt.hash(plainPassword, salt);
 
   this.password = hashedPassword;
-
-  next();
 });
 
 userSchema.methods.matchPassword = async function (enteredPassword) {
