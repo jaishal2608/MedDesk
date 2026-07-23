@@ -2,6 +2,9 @@ const User = require("../models/User");
 const sendEmail = require("../utils/sendEmail");
 const otpEmailTemplate = require("../utils/otpEmailTemplate");
 const jwt = require("jsonwebtoken");
+const { OAuth2Client } = require("google-auth-library");
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const signup = async (req, res) => {
   try {
@@ -117,4 +120,58 @@ const verifyOtp = async (req, res) => {
   }
 };
 
-module.exports = { signup, login, verifyOtp };
+const googleLogin = async (req, res) => {
+  try {
+    const { credential } = req.body;
+
+    // Verify the token is genuinely from Google
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { email, name, sub: googleId } = payload;
+
+    // Check if user already exists
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      // New user - create one, no password needed
+      user = await User.create({
+        name,
+        email,
+        googleId,
+        role: "patient",
+        isEmailVerified: true,
+      });
+    } else if (!user.googleId) {
+      // Existing user signed up normally before, now linking Google
+      user.googleId = googleId;
+      await user.save();
+    }
+
+    // Issue our own JWT, same as regular login
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.status(200).json({
+      message: "Google login successful",
+      token: token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+
+module.exports = { signup, login, verifyOtp, googleLogin};
