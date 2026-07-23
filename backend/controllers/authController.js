@@ -1,8 +1,8 @@
 const User = require("../models/User");
 const sendEmail = require("../utils/sendEmail");
 const otpEmailTemplate = require("../utils/otpEmailTemplate");
+const jwt = require("jsonwebtoken");
 
-// Signup logic
 const signup = async (req, res) => {
   try {
     const { name, email, password, role, phone } = req.body;
@@ -36,7 +36,6 @@ const signup = async (req, res) => {
   }
 };
 
-// Login logic - step 1: verify password, send OTP
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -60,7 +59,7 @@ const login = async (req, res) => {
     await sendEmail(
       user.email,
       "Your MedDesk Login OTP",
-      otpEmailTemplate(otp)
+      otpEmailTemplate(otp),
     );
 
     res.status(200).json({
@@ -71,4 +70,51 @@ const login = async (req, res) => {
   }
 };
 
-module.exports = { signup, login };
+const verifyOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ message: "Invalid email" });
+    }
+
+    if (user.otp !== otp) {
+      return res.status(400).json({ message: "Incorrect OTP" });
+    }
+
+    const isExpired = Date.now() > user.otpExpiry;
+
+    if (isExpired) {
+      return res
+        .status(400)
+        .json({ message: "OTP has expired. Please login again." });
+    }
+
+    user.otp = undefined;
+    user.otpExpiry = undefined;
+    user.isEmailVerified = true;
+    await user.save();
+
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" },
+    );
+
+    res.status(200).json({
+      message: "Login successful",
+      token: token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+module.exports = { signup, login, verifyOtp };
