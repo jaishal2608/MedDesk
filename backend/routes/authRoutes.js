@@ -7,7 +7,7 @@ const {
   googleLogin,
 } = require("../controllers/authController");
 
-const { protect } = require("../middleware/authMiddleware");
+const { protect, authorizeRoles } = require("../middleware/authMiddleware");
 
 router.post("/signup", signup);
 router.post("/login", login);
@@ -18,6 +18,13 @@ router.post("/google", googleLogin);
 router.get("/test-protected", protect, (req, res) => {
   res.status(200).json({
     message: "You accessed a protected route!",
+    user: req.user,
+  });
+});
+
+router.get("/test-admin-only", protect, authorizeRoles("admin"), (req, res) => {
+  res.status(200).json({
+    message: "You accessed an admin-only route!",
     user: req.user,
   });
 });
